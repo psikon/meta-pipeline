@@ -1,20 +1,27 @@
 #!/usr/bin/env python
 
+'''
+litte wrapper script for automated quality improvement of Illumina fastq files in 3 steps:
+- quality based trimming of reads
+- length filtering
+- dereplication/removing of duplicates
+'''
 #@author: Philipp Sehnert
 #@contact: philipp.sehnert[a]gmail.com
 
 # IMPORTS
 import sys, os
 from argparse import ArgumentParser
+import ConfigParser 
 import shlex
 import subprocess
 
 # GLOBAL VARIABLES
-trimmomatic = 'java -Xmx8G -jar /home/psehnert/software/Trimmomatic/trimmomatic-0.32.jar'
+
     
 def main(argv = None):
 
-    # Setup argument parser
+    # Setup cmd interface
     parser = ArgumentParser(description = '%s -- preprocessing of paired end Illumina Reads' % 
                             (os.path.basename(sys.argv[0])),
                             epilog = 'created by Philipp Sehnert',
@@ -39,18 +46,37 @@ def main(argv = None):
     
     args = parser.parse_args()
 
-    if __name__ == '__main__':
+    # import path of executable scripts from settings.conf
+    conf = ConfigParser.SafeConfigParser()
+    conf.read('settings.conf')
+    trimmomatic = 'java -Xmx12G -jar ' + conf.get('Executable','trimmomatic')
 
+    if __name__ == '__main__':
+        # create output dir
         try:
             os.makedirs(args.output)
         except OSError:
             # if dir exists and is dir go ahead
             if not os.path.isdir(args.output):
                 raise
+        # check path of executable
+        try:
+          os.path.exists(conf.get('Executable','trimmomatic'))
+        except:
+          sys.stderr.write("Executable not found! Please check settings.conf")
+          sys.exit(1)
 
-
+        # create names for output files
         readname1 = args.input[0].split('/')[-1].split('.')[0]
         readname2 = args.input[1].split('/')[-1].split('.')[0]
+
+#################################################################################################
+        
+        sys.stdout.write('Starting quality based trimming with args:\n\
+                         LEADING: %d\n\
+                         TRAILING: %d\n\
+                         SLIDING_WINDOW: %s\n' % (args.leading, args.trailing, args.sliding_window))
+        # quality based trimming of 3' and 5' ends with sliding window algoriythm
         trim = subprocess.Popen(shlex.split('%s PE -threads %d -phred33 -trimlog %s %s %s %s %s %s LEADING:%d TRAILING:%d SLIDINGWINDOW:%s' % 
                                             (trimmomatic,
                                             args.threads,
@@ -65,21 +91,30 @@ def main(argv = None):
                                             args.sliding_window)),
                                 stderr = subprocess.PIPE)
         trim.wait()
+        # parse cmd output
         trimming_summary = [int(s) for s in trim.stderr.read().split() if s.isdigit()]
+        # new cmd output
         sys.stdout.write('Input Reads: %d          \n\
-                          Both Surviving: %d (%d\%) \n\
-                          Forward only: %d (%d\%)   \n\
-                          Reverse only: %d (%d\%)   \n\
-                          Filtered out: %d (%d\%)   \n' % 
-                        (trimming_summary[-5],
-                        trimming_summary[-4], round(trimming_summary[-4]*100/trimming_summary[-5],2),
-                        trimming_summary[-3], round(trimming_summary[-3]*100/trimming_summary[-5],2),
-                        trimming_summary[-2], round(trimming_summary[-2]*100/trimming_summary[-5],2),
-                        trimming_summary[-1], 1))
-        # Input Read Pairs: 1400909 Both Surviving: 1072089 (76,53%) Forward Only Surviving: 178601 (12,75%) Reverse Only Surviving: 38126 (2,72%) Dropped: 112093 (8,00%)
-        # TrimmomaticPE: Completed successfully
-
+                          Both Surviving: %d - %5.2f%%  \n\
+                          Forward only: %d - %5.2f%%    \n\
+                          Reverse only: %d  - %5.2f%%   \n\
+                          Filtered out: %d - %5.2f%%    \n' % (trimming_summary[-5], 
+                                                    trimming_summary[-4], 
+                                                    0.0 if trimming_summary[-4] == 0 else round(trimming_summary[-4]*100/trimming_summary[-5],2),
+                                                    trimming_summary[-3], 
+                                                    0.0 if trimming_summary[-3] == 0 else round(trimming_summary[-3]*100/trimming_summary[-5],2),
+                                                    trimming_summary[-2], 
+                                                    0.0 if trimming_summary[-2] == 0 else round(trimming_summary[-2]*100/trimming_summary[-5],2),
+                                                    trimming_summary[-1], 
+                                                    0.0 if trimming_summary[-1] == 0 else round(trimming_summary[-1]*100/trimming_summary[-5],2))
+                          )
+        # create new input files for next step
         input = [args.output + os.sep + readname1 + '.trimmed.fastq', args.output + os.sep + readname2 + '.trimmed.fastq']
+        
+###################################################################################################################################
+        
+        sys.stdout.write('Starting quality based trimming with args:\nMINLEN: %d\n' % (args.minlength))
+        # length filtering of reads
         filter = subprocess.Popen(shlex.split('%s PE -threads %d -phred33 -trimlog %s %s %s %s %s %s MINLEN:%d' %
                                              (trimmomatic,
                                              args.threads,
@@ -92,15 +127,21 @@ def main(argv = None):
                                              args.minlength)),
                                             stderr = subprocess.PIPE)
         filter.wait()
+        # parse cmd output
         filter_summary = [int(s) for s in filter.stderr.read().split() if s.isdigit()]
+        # new cmd output
         sys.stdout.write('Input Reads: %d          \n\
-                          Both Surviving: %d (%d%) \n\
-                          Forward only: %d (%d%)   \n\
-                          Reverse only: %d (%d%)   \n\
-                          Filtered out: %d (%d%)   \n' % 
-                        (filter_summary[-5], round(filter_summary[-4]*100/filter_summary[-5],2),
-                        filter_summary[-4], round(filter_summary[-3]*100/filter_summary[-5],2),
-                        filter_summary[-3], round(filter_summary[-2]*100/filter_summary[-5],2),
-                        filter_summary[-2], round(filter_summary[-1]*100/filter_summary[-5],2),
-                        filter_summary[-1], 1))
+                          Both Surviving: %d - %5.2f%%  \n\
+                          Forward only: %d - %5.2f%%    \n\
+                          Reverse only: %d  - %5.2f%%   \n\
+                          Filtered out: %d - %5.2f%%    \n' % (filter_summary[-5], 
+                                                    filter_summary[-4], 
+                                                    0.0 if filter_summary[-4] == 0 else round(filter_summary[-4]*100/filter_summary[-5],2),
+                                                    filter_summary[-3], 
+                                                    0.0 if filter_summary[-3] == 0 else round(filter_summary[-3]*100/filter_summary[-5],2),
+                                                    filter_summary[-2], 
+                                                    0.0 if filter_summary[-2] == 0 else round(filter_summary[-2]*100/filter_summary[-5],2),
+                                                    filter_summary[-1], 
+                                                    0.0 if filter_summary[-1] == 0 else round(filter_summary[-1]*100/filter_summary[-5],2))
+                          )
 sys.exit(main())
