@@ -8,14 +8,156 @@ litte wrapper script for automated quality improvement of Illumina fastq files i
 #@author: Philipp Sehnert
 #@contact: philipp.sehnert[a]gmail.com
 
-# IMPORTS
+# imports
 import sys, os
 from argparse import ArgumentParser
 import shlex
 import subprocess
 import fileinput
 
-    
+# Executables
+trimmomatic = 'java -Xmx12G -jar ext/Trimmomatic/trimmomatic-0.32.jar'
+
+def extract_readname(item, index):
+  '''extract the name of the file befor the first dot'''
+  return item[index].split('/')[-1].split('.')[0]
+
+def cat_files(input, output):
+  '''combine all input file in one file'''
+  # open output file
+  with open(output, 'w') as fout:
+          # append every line of every file to output file
+          for line in fileinput.input(input):
+            fout.write(line)
+  fout.close()
+
+  return output
+
+def trimming(input, outputdir, threads, leading, trailing, sliding_window, singletons):
+  '''wrapper for the trimming process with trimmomatic'''
+  sys.stdout.write('Starting quality based trimming with args:\n\
+                    LEADING: %d\n\
+                    TRAILING: %d\n\
+                    SLIDING_WINDOW: %s\n' % (leading, 
+                                             trailing, 
+                                             sliding_window))
+  # quality based trimming of 3' and 5' ends with sliding window algorithm with trimmomatic
+  trim = subprocess.Popen(shlex.split('%s PE -threads %d -phred33 -trimlog %s %s %s %s %s %s LEADING:%d TRAILING:%d SLIDINGWINDOW:%s' % 
+                                      (trimmomatic,
+                                       threads,
+                                       outputdir + os.sep + extract_readname(input, 0) + '.trim.log',
+                                       ' '.join(str(i)for i in input),
+                                       outputdir + os.sep + extract_readname(input, 0) + '.trimmed.fastq',
+                                       outputdir + os.sep + extract_readname(input, 0) + '.unpaired_after_trimming.fastq',
+                                       outputdir + os.sep + extract_readname(input, 1) + '.trimmed.fastq',
+                                       outputdir + os.sep + extract_readname(input, 1) + '.unpaired_after_trimming.fastq',
+                                       leading, 
+                                       trailing, 
+                                       sliding_window)),
+                          stderr = subprocess.PIPE)
+  trim.wait()
+  # parse cmd output
+  trimming_summary = [int(s) for s in trim.stderr.read().split() if s.isdigit()]
+  # new cmd output
+  sys.stdout.write('Input Reads: %d          \n\
+                    Both Surviving: %d - %5.2f%%  \n\
+                    Forward only: %d - %5.2f%%    \n\
+                    Reverse only: %d  - %5.2f%%   \n\
+                    Filtered out: %d - %5.2f%%    \n' % (trimming_summary[-5], 
+                                                         trimming_summary[-4], 
+                                                         0.0 if trimming_summary[-4] == 0 else round(trimming_summary[-4]*100/trimming_summary[-5],2),
+                                                         trimming_summary[-3], 
+                                                         0.0 if trimming_summary[-3] == 0 else round(trimming_summary[-3]*100/trimming_summary[-5],2),
+                                                         trimming_summary[-2], 
+                                                         0.0 if trimming_summary[-2] == 0 else round(trimming_summary[-2]*100/trimming_summary[-5],2),
+                                                         trimming_summary[-1], 
+                                                         0.0 if trimming_summary[-1] == 0 else round(trimming_summary[-1]*100/trimming_summary[-5],2))
+                        )
+  # get successfull trimmed paired end files
+  result = [outputdir + os.sep + extract_readname(input, 0) + '.trimmed.fastq', 
+            outputdir + os.sep + extract_readname(input, 1) + '.trimmed.fastq']
+  # get successfull trimmed but now unpaired files
+  unpaired = [outputdir + os.sep + extract_readname(input, 0) + '.unpaired_after_trimming.fastq', 
+              outputdir + os.sep + extract_readname(input, 1) + '.unpaired_after_trimming.fastq']
+  if singletons:
+    # cat forward and reverse only reads for length filtering
+    single = cat_files(unpaired, 
+                       outputdir + os.sep + extract_readname(input, 0) + '.single_tmp.trimmed.fastq')
+  else:
+    single = None
+  
+  # retrun paired and single results
+  return [result, single]
+
+def length_filtering_PE(input, outputdir, threads, minlength, singletons):
+  '''wrapper for trimmomatic length filtering'''
+  sys.stdout.write('Starting length filtering for PE with args:\nMINLEN: %d\n' % (minlength))
+  # paired end length filtering of reads with trimmomatic
+  filter = subprocess.Popen(shlex.split('%s PE -threads %d -phred33 -trimlog %s %s %s %s %s %s MINLEN:%d' %
+                                        (trimmomatic,
+                                         threads,
+                                         outputdir + os.sep + extract_readname(input, 0) + '.filtered.log',
+                                         ' '.join(str(i)for i in input),
+                                         outputdir + os.sep + extract_readname(input, 0) + '.filtered.fastq',
+                                         outputdir + os.sep + extract_readname(input, 0) + '.unpaired_after_filtering.fastq',
+                                         outputdir + os.sep + extract_readname(input, 1) + '.filtered.fastq',
+                                         outputdir + os.sep + extract_readname(input, 1) + '.unpaired_after_filtering.fastq',
+                                         minlength)),
+                            stderr = subprocess.PIPE)
+  filter.wait()
+  # parse cmd output
+  filter_summary = [int(s) for s in filter.stderr.read().split() if s.isdigit()]
+  # new cmd output
+  sys.stdout.write('Input Reads: %d              \n\
+                    Both Surviving: %d - %5.2f%% \n\
+                    Forward only: %d - %5.2f%%   \n\
+                    Reverse only: %d  - %5.2f%%  \n\
+                    Filtered out: %d - %5.2f%%   \n' % (filter_summary[-5], 
+                                                        filter_summary[-4], 
+                                                        0.0 if filter_summary[-4] == 0 else round(filter_summary[-4]*100/filter_summary[-5],2),
+                                                        filter_summary[-3], 
+                                                        0.0 if filter_summary[-3] == 0 else round(filter_summary[-3]*100/filter_summary[-5],2),
+                                                        filter_summary[-2], 
+                                                        0.0 if filter_summary[-2] == 0 else round(filter_summary[-2]*100/filter_summary[-5],2),
+                                                        filter_summary[-1], 
+                                                        0.0 if filter_summary[-1] == 0 else round(filter_summary[-1]*100/filter_summary[-5],2))
+                  )   
+  result = [outputdir + os.sep + extract_readname(input, 0) + '.filtered.fastq',
+            outputdir + os.sep + extract_readname(input, 1) + '.filtered.fastq']
+  unpaired = [outputdir + os.sep + extract_readname(input, 0) + '.unpaired_after_filtering.fastq',
+              outputdir + os.sep + extract_readname(input, 1) + '.unpaired_after_filtering.fastq']
+
+  if singletons:
+    single = cat_files(unpaired, 
+                       outputdir + os.sep + extract_readname(input, 0) + '.single_tmp.filtered.fastq')
+  else:
+    single = None
+
+  return [result, single]
+
+def length_filtering_SE(input, outputdir, threads, minlength):
+  # do length filtering for single end reads
+  sys.stdout.write('Starting length filtering for SE with args:\nMINLEN: %d\n' % (minlength))
+  filter = subprocess.Popen(shlex.split('%s SE -threads %d -phred33 -trimlog %s %s %s MINLEN:%d' %
+                                       (trimmomatic,
+                                        threads,
+                                        outputdir + os.sep + extract_readname(input, 0) + '.single.log',
+                                        input,
+                                        outputdir + os.sep + extract_readname(input, 0) + '.single.filtered.fastq',
+                                        minlength)),
+                            stderr = subprocess.PIPE)
+  filter.wait()
+
+  filter_summary = [int(s) for s in filter.stderr.read().split() if s.isdigit()]
+  # new cmd output
+  sys.stdout.write('Input Reads: %d\nSurviving: %d - %5.2f%%\nFiltered out: %d - %5.2f%%\n' % (filter_summary[-3], 
+                                                                                               filter_summary[-2], 
+                                                                                               0.0 if filter_summary[-2] == 0 else round(filter_summary[-2]*100/filter_summary[-3],2),
+                                                                                               filter_summary[-1], 
+                                                                                               0.0 if filter_summary[-1] == 0 else round(filter_summary[-1]*100/filter_summary[-3],2))                                                       
+                  )
+  return [outputdir + os.sep + extract_readname(input, 0) + '.single.filtered.fastq']
+
 def main(argv = None):
   # Setup cmd interface
   parser = ArgumentParser(description = '%s -- preprocessing of paired end Illumina Reads' % 
@@ -41,11 +183,9 @@ def main(argv = None):
   parser.add_argument('input', nargs = '+', action = 'store', 
                       help = 'single or paired input files in <fastq> format')
 
-    
   args = parser.parse_args()
-
-  trimmomatic = 'java -Xmx12G -jar ext/Trimmomatic/trimmomatic-0.32.jar'
-
+  input = args.input
+  
   if __name__ == '__main__':
  
     # create output dir
@@ -57,130 +197,30 @@ def main(argv = None):
         raise
 
     try:
-      # create names for output files
-      readname1 = args.input[0].split('/')[-1].split('.')[0]
-      readname2 = args.input[1].split('/')[-1].split('.')[0]
+      input = trimming(input, args.output, args.threads, 
+                       args.leading, args.trailing, 
+                       args.sliding_window, args.singletons)
+      trim_single = input[1]
+      input = length_filtering_PE(input[0], args.output, args.threads, 
+                                  args.minlength, args.singletons)
+      filtered_single = input[1]
+      all_singles = cat_files([trim_single, filtered_single], 
+                               args.output + os.sep + extract_readname(input[0], 0) + '.single.fastq')
+      all_singles = length_filtering_SE(all_singles,
+                                        args.output,
+                                        args.threads,
+                                        args.minlength)
+       # clean up
+      try:
+        os.remove(trim_single)
+        os.remove(filtered_single)
+        os.remove(all_singles)
+      except:
+        sys.stderr.write("Cannot cleanup completly")
 
-#################################################################################################
-        
-      sys.stdout.write('Starting quality based trimming with args:\n\
-                       LEADING: %d\n\
-                       TRAILING: %d\n\
-                       SLIDING_WINDOW: %s\n' % (args.leading, args.trailing, args.sliding_window))
-      # quality based trimming of 3' and 5' ends with sliding window algoriythm
-      trim = subprocess.Popen(shlex.split('%s PE -threads %d -phred33 -trimlog %s %s %s %s %s %s LEADING:%d TRAILING:%d SLIDINGWINDOW:%s' % 
-                                         (trimmomatic,
-                                          args.threads,
-                                          args.output + os.sep + readname1 + '.trim.log',
-                                          ' '.join(str(i)for i in args.input),
-                                          args.output + os.sep + readname1 + '.trimmed.fastq',
-                                          args.output + os.sep + readname1 + '.unpaired_after_trimming.fastq',
-                                          args.output + os.sep + readname2 + '.trimmed.fastq',
-                                          args.output + os.sep + readname2 + '.unpaired_after_trimming.fastq',
-                                          args.leading, 
-                                          args.trailing, 
-                                          args.sliding_window)),
-                              stderr = subprocess.PIPE)
-      trim.wait()
-      # parse cmd output
-      trimming_summary = [int(s) for s in trim.stderr.read().split() if s.isdigit()]
-      # new cmd output
-      sys.stdout.write('Input Reads: %d          \n\
-                        Both Surviving: %d - %5.2f%%  \n\
-                        Forward only: %d - %5.2f%%    \n\
-                        Reverse only: %d  - %5.2f%%   \n\
-                        Filtered out: %d - %5.2f%%    \n' % (trimming_summary[-5], 
-                                                             trimming_summary[-4], 
-                                                             0.0 if trimming_summary[-4] == 0 else round(trimming_summary[-4]*100/trimming_summary[-5],2),
-                                                             trimming_summary[-3], 
-                                                             0.0 if trimming_summary[-3] == 0 else round(trimming_summary[-3]*100/trimming_summary[-5],2),
-                                                             trimming_summary[-2], 
-                                                             0.0 if trimming_summary[-2] == 0 else round(trimming_summary[-2]*100/trimming_summary[-5],2),
-                                                             trimming_summary[-1], 
-                                                             0.0 if trimming_summary[-1] == 0 else round(trimming_summary[-1]*100/trimming_summary[-5],2))
-                        )
-      # create new input files for next step
-      input = [args.output + os.sep + readname1 + '.trimmed.fastq', args.output + os.sep + readname2 + '.trimmed.fastq']
-      
-      if args.singletons:
-        # cat forward and reverse only reads for length filtering
-        with open(args.output + os.sep + readname1 + '.single_tmp.trimmed.fastq', 'w') as fout:
-          for line in fileinput.input([args.output + os.sep + readname1 + '.unpaired_after_trimming.fastq',
-                                       args.output + os.sep + readname2 + '.unpaired_after_trimming.fastq']):
-            fout.write(line)
-
-##################################################################################################################################
-            
-      sys.stdout.write('Starting quality based trimming with args:\nMINLEN: %d\n' % (args.minlength))
-      # length filtering of reads
-      filter = subprocess.Popen(shlex.split('%s PE -threads %d -phred33 -trimlog %s %s %s %s %s %s MINLEN:%d' %
-                                           (trimmomatic,
-                                           args.threads,
-                                           args.output + os.sep + readname1 + '.filtered.log',
-                                           ' '.join(str(i)for i in input),
-                                           args.output + os.sep + readname1 + '.filtered.fastq',
-                                           args.output + os.sep + readname1 + '.unpaired_after_filtering.fastq',
-                                           args.output + os.sep + readname2 + '.filtered.fastq',
-                                           args.output + os.sep + readname2 + '.unpaired_after_filtering.fastq',
-                                           args.minlength)),
-                                          stderr = subprocess.PIPE)
-      filter.wait()
-      # parse cmd output
-      filter_summary = [int(s) for s in filter.stderr.read().split() if s.isdigit()]
-      # new cmd output
-      sys.stdout.write('Input Reads: %d               \n\
-                        Both Surviving: %d - %5.2f%%  \n\
-                        Forward only: %d - %5.2f%%    \n\
-                        Reverse only: %d  - %5.2f%%   \n\
-                        Filtered out: %d - %5.2f%%    \n' % (filter_summary[-5], 
-                                                             filter_summary[-4], 
-                                                             0.0 if filter_summary[-4] == 0 else round(filter_summary[-4]*100/filter_summary[-5],2),
-                                                             filter_summary[-3], 
-                                                             0.0 if filter_summary[-3] == 0 else round(filter_summary[-3]*100/filter_summary[-5],2),
-                                                             filter_summary[-2], 
-                                                             0.0 if filter_summary[-2] == 0 else round(filter_summary[-2]*100/filter_summary[-5],2),
-                                                             filter_summary[-1], 
-                                                             0.0 if filter_summary[-1] == 0 else round(filter_summary[-1]*100/filter_summary[-5],2))
-                        )   
-      if args.singletons:
-        # cat forward and reverse only reads for length filtering
-        with open(args.output + os.sep + readname1 + '.single_tmp.filtered.fastq', 'w') as fout:
-          for line in fileinput.input([args.output + os.sep + readname1 + '.unpaired_after_filtering.fastq',
-                                       args.output + os.sep + readname2 + '.unpaired_after_filtering.fastq']):
-            fout.write(line)
-        # generate new input file with single reads for length filtering
-        with open(args.output + os.sep + readname1 + '.single.fastq', 'w') as fout:
-          for line in fileinput.input([args.output + os.sep + readname1 + '.single_tmp.trimmed.fastq',
-                                       args.output + os.sep + readname1 + '.single_tmp.filtered.fastq']):
-            fout.write(line)
-        input = args.output + os.sep + readname1 + '.single.fastq'
-        # do length filtering for single end reads
-        sys.stdout.write("Filter remaining Singletons ...")
-        filter = subprocess.Popen(shlex.split('%s SE -threads %d -phred33 -trimlog %s %s %s MINLEN:%d' %
-                                           (trimmomatic,
-                                           args.threads,
-                                           args.output + os.sep + readname1 + '.single.log',
-                                           input,
-                                           args.output + os.sep + readname1 + '.single.filtered.fastq',
-                                           args.minlength)),
-                                          stderr = subprocess.PIPE)
-        filter.wait()
-
-        filter_summary = [int(s) for s in filter.stderr.read().split() if s.isdigit()]
-        # new cmd output
-        sys.stdout.write('Input Reads: %d\nSurviving: %d - %5.2f%%\nFiltered out: %d - %5.2f%%\n' % (filter_summary[-3], 
-                                                                                                     filter_summary[-2], 
-                                                                                                     0.0 if filter_summary[-2] == 0 else round(filter_summary[-2]*100/filter_summary[-3],2),
-                                                                                                     filter_summary[-1], 
-                                                                                                     0.0 if filter_summary[-1] == 0 else round(filter_summary[-1]*100/filter_summary[-3],2))                                                       
-                        )
-        # clean up
-        try:
-          os.remove(args.output + os.sep + readname1 + '.single_tmp.trimmed.fastq')
-          os.remove(args.output + os.sep + readname1 + '.single_tmp.filtered.fastq')
-          os.remove(args.output + os.sep + readname1 + '.single.fastq')
-        except:
-          sys.stderr.write("Cannot cleanup completly")
+      sys.stdout.write('Quality control complete!\nresult:\n\t%s\n\t%s\n\t%s\n' % (input[0][0],
+                                                                                   input[0][1], 
+                                                                                   all_singles[0]))
 
     except KeyboardInterrupt:
       sys.stdout.write('\nERROR 1 : Operation cancelled by User!\n')
