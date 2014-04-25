@@ -121,18 +121,20 @@ def length_filtering_PE(input, outputdir, threads, minlength, singletons):
                                                         0.0 if filter_summary[-2] == 0 else round(filter_summary[-2]*100/filter_summary[-5],2),
                                                         filter_summary[-1], 
                                                         0.0 if filter_summary[-1] == 0 else round(filter_summary[-1]*100/filter_summary[-5],2))
-                  )   
+                  ) 
+  # get successfull filtered reads
   result = [outputdir + os.sep + extract_readname(input, 0) + '.filtered.fastq',
             outputdir + os.sep + extract_readname(input, 1) + '.filtered.fastq']
+  # get unpaired reads remaining after filtering
   unpaired = [outputdir + os.sep + extract_readname(input, 0) + '.unpaired_after_filtering.fastq',
               outputdir + os.sep + extract_readname(input, 1) + '.unpaired_after_filtering.fastq']
-
+  # if processing of singletons is switched on, then combine the unpaired reads
   if singletons:
     single = cat_files(unpaired, 
                        outputdir + os.sep + extract_readname(input, 0) + '.single_tmp.filtered.fastq')
   else:
     single = None
-
+  # return filtered and single end reads 
   return [result, single]
 
 def length_filtering_SE(input, outputdir, threads, minlength):
@@ -147,7 +149,7 @@ def length_filtering_SE(input, outputdir, threads, minlength):
                                         minlength)),
                             stderr = subprocess.PIPE)
   filter.wait()
-
+  # parse cmd output
   filter_summary = [int(s) for s in filter.stderr.read().split() if s.isdigit()]
   # new cmd output
   sys.stdout.write('Input Reads: %d\nSurviving: %d - %5.2f%%\nFiltered out: %d - %5.2f%%\n' % (filter_summary[-3], 
@@ -156,6 +158,7 @@ def length_filtering_SE(input, outputdir, threads, minlength):
                                                                                                filter_summary[-1], 
                                                                                                0.0 if filter_summary[-1] == 0 else round(filter_summary[-1]*100/filter_summary[-3],2))                                                       
                   )
+  # return successfull filtered single end reads
   return [outputdir + os.sep + extract_readname(input, 0) + '.single.filtered.fastq']
 
 def main(argv = None):
@@ -182,8 +185,9 @@ def main(argv = None):
                       help = 'permit length filtering of remaining singletons reads')
   parser.add_argument('input', nargs = '+', action = 'store', 
                       help = 'single or paired input files in <fastq> format')
-
+  # parse cmd arguments
   args = parser.parse_args()
+  # define input
   input = args.input
   
   if __name__ == '__main__':
@@ -197,20 +201,26 @@ def main(argv = None):
         raise
 
     try:
+      # start trimming process
       input = trimming(input, args.output, args.threads, 
                        args.leading, args.trailing, 
                        args.sliding_window, args.singletons)
+      # seperate single end reads from trimming
       trim_single = input[1]
+      # filter paired end reads for minlength
       input = length_filtering_PE(input[0], args.output, args.threads, 
                                   args.minlength, args.singletons)
+      # seperate single end reads
       filtered_single = input[1]
+      # combine all single end reads in one file
       all_singles = cat_files([trim_single, filtered_single], 
                                args.output + os.sep + extract_readname(input[0], 0) + '.single.fastq')
+      # do a length filtereing for all remaining single end reads
       all_singles = length_filtering_SE(all_singles,
                                         args.output,
                                         args.threads,
                                         args.minlength)
-       # clean up
+       # clean up not used files
       try:
         os.remove(trim_single)
         os.remove(filtered_single)
@@ -218,6 +228,7 @@ def main(argv = None):
       except:
         sys.stderr.write("Cannot cleanup completly")
 
+      # give information about result files
       sys.stdout.write('Quality control complete!\nresult:\n\t%s\n\t%s\n\t%s\n' % (input[0][0],
                                                                                    input[0][1], 
                                                                                    all_singles[0]))
