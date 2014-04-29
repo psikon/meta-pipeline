@@ -54,7 +54,7 @@ def remove_duplicates(input, outputdir):
   '''wrapper function to call fastx_collapser on combined single reads, result will be in fasta format'''
   sys.stdout.write('Remove duplicated reads ...\n')
   # create outputs
-  output = outputdir + os.sep + 'classify.nodup.fastq'
+  output = outputdir + os.sep + 'classify.nodup.fasta'
   log = outputdir + os.sep + 'no_dup.log'
   # call fastx_collapser
   duplicates = subprocess.Popen(shlex.split('%s -Q33 -v -i %s -o %s' % (COLLAPSER,
@@ -88,7 +88,7 @@ def cat_files(input, output):
 def main(argv = None):
 
   # Setup cmd interface
-  parser = ArgumentParser(description = '%s -- preprocessing of paired end Illumina Reads' % 
+  parser = ArgumentParser(description = '%s -- concatination with Flash and removing of duplicates from resolving single end reads' % 
                           (os.path.basename(sys.argv[0])),
                           epilog = 'created by Philipp Sehnert',
                           add_help = True)

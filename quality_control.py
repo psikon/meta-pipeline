@@ -145,7 +145,7 @@ def length_filtering_SE(input, outputdir, threads, minlength):
                                         threads,
                                         outputdir + os.sep + extract_readname(input, 0) + '.single.log',
                                         input,
-                                        outputdir + os.sep + extract_readname(input, 0) + '.single.filtered.fastq',
+                                        outputdir + os.sep + extract_readname([input], 0) + '.single.filtered.fastq',
                                         minlength)),
                             stderr = subprocess.PIPE)
   filter.wait()
@@ -159,7 +159,7 @@ def length_filtering_SE(input, outputdir, threads, minlength):
                                                                                                0.0 if filter_summary[-1] == 0 else round(filter_summary[-1]*100/filter_summary[-3],2))                                                       
                   )
   # return successfull filtered single end reads
-  return [outputdir + os.sep + extract_readname(input, 0) + '.single.filtered.fastq']
+  return outputdir + os.sep + extract_readname([input], 0) + '.single.filtered.fastq'
 
 def main(argv = None):
   # Setup cmd interface
@@ -213,10 +213,10 @@ def main(argv = None):
       # seperate single end reads
       filtered_single = input[1]
       # combine all single end reads in one file
-      all_singles = cat_files([trim_single, filtered_single], 
+      all_singles_tmp = cat_files([trim_single, filtered_single], 
                                args.output + os.sep + extract_readname(input[0], 0) + '.single.fastq')
       # do a length filtereing for all remaining single end reads
-      all_singles = length_filtering_SE(all_singles,
+      all_singles = length_filtering_SE(all_singles_tmp,
                                         args.output,
                                         args.threads,
                                         args.minlength)
@@ -224,14 +224,14 @@ def main(argv = None):
       try:
         os.remove(trim_single)
         os.remove(filtered_single)
-        os.remove(all_singles)
+        os.remove(all_singles_tmp)
       except:
-        sys.stderr.write("Cannot cleanup completly")
+        sys.stderr.write("Cannot cleanup completly\n")
 
       # give information about result files
       sys.stdout.write('Quality control complete!\nresult:\n\t%s\n\t%s\n\t%s\n' % (input[0][0],
                                                                                    input[0][1], 
-                                                                                   all_singles[0]))
+                                                                                   all_singles))
 
     except KeyboardInterrupt:
       sys.stdout.write('\nERROR 1 : Operation cancelled by User!\n')
