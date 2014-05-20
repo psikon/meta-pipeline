@@ -51,11 +51,8 @@ if (length(samples)!= nrow(data)){
   rownames(data) <- samples
 }
 
-ls
-
 # rearrenge vector for ggplot2
-data2 <- melt(data)
-
+data2 <- melt(as.data.frame(t(data)))
 # new factor for legend 
 desc <- factor(rep(c("paired end trimmed", "single end trimmed",
                      "concatinated", "single without duplicates"),
@@ -64,8 +61,9 @@ desc <- factor(rep(c("paired end trimmed", "single end trimmed",
                        "concatinated", "single without duplicates"))
 # combine to new data.frame
 df <- cbind(data2, desc)
+output <- paste0(opt$output,".pdf")
 # build plot
-pdf("graphs/read_distribution_meta-pipeline.pdf")
+pdf(output)
   ggplot(df, aes(x = variable, y = value, fill = desc)) + 
     # type of plot
     geom_bar(stat = "identity", position = "dodge") +
