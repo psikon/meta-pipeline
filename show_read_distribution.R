@@ -1,4 +1,5 @@
 #!/usr/bin/env Rscript
+
 # load command line interface
 suppressPackageStartupMessages(library('optparse'))
 
@@ -27,40 +28,57 @@ suppressPackageStartupMessages(library('scales'))
 suppressPackageStartupMessages(library('ShortRead'))
 
 # parse input from files
+# find all files from Trimmomatic step
 filtered_fastq <- list.files(opt$datadir, pattern = ".filtered.fastq", 
                              recursive = T, full.names = T)
+# count sequences of filtered single end data
 single_filtered <-  countLines(filtered_fastq[grep("*.single.filtered.fastq", filtered_fastq)])/4
+# count sequences of filtered paired end data
 filtered_fastq <- unique(countLines(filtered_fastq[-grep("*.single.filtered.fastq", filtered_fastq)]))/4
+# count sequences of successful concatinated data
 concat <- countLines(list.files(opt$datadir, pattern = '*.extendedFrags.fastq', 
                                 recursive = T, full.names = T))/4
+# count sequences of non duplicated data
 no_dup <- countLines(list.files(opt$datadir, pattern = '*.nodup.fasta', 
                                 recursive = T, full.names = T))/2
 if(!is.null(opt$rawdir)) {
+  # count sequences of raw data if sepcified
   raw = countLines(list.files(opt$datadir, pattern = '*.fastq', 
                               recursive = T, full.names = T))/4
   data <- data.frame(raw, filtered_fastq, single_filtered,concat, no_dup)
 } else {
   data <- data.frame(filtered_fastq,single_filtered,concat,no_dup)
 }
-# adjust rownames
+# generate vector of rownames
 samples <- unlist(strsplit(opt$samplenames,","))
 if (length(samples)!= nrow(data)){
+  # exit if new rownames unequal to number of rows
   message("Check samplenames: must be equal to number of samples")
   q("no", 1, FALSE)
 } else {
+  #adjust the rownames
   rownames(data) <- samples
 }
 
-# rearrenge vector for ggplot2
+# rearrange vector for ggplot2
 data2 <- melt(as.data.frame(t(data)))
 # new factor for legend 
-desc <- factor(rep(c("paired end trimmed", "single end trimmed",
-                     "concatinated", "single without duplicates"),
-                   length=nrow(data2)),
-              levels=c("paired end trimmed", "single end trimmed",
-                       "concatinated", "single without duplicates"))
+if(!is.null(opt$rawdir)) {
+  desc <- factor(rep(c("RAW", "paired end trimmed", "single end trimmed",
+                       "concatinated", "single without duplicates"),
+                     length=nrow(data2)),
+                 levels=c("RAW", "paired end trimmed", "single end trimmed",
+                          "concatinated", "single without duplicates"))
+} else {
+  desc <- factor(rep(c("paired end trimmed", "single end trimmed",
+                       "concatinated", "single without duplicates"),
+                     length=nrow(data2)),
+                levels=c("paired end trimmed", "single end trimmed",
+                         "concatinated", "single without duplicates"))
+}
 # combine to new data.frame
 df <- cbind(data2, desc)
+# generate output name
 output <- paste0(opt$output,".pdf")
 # build plot
 pdf(output)
