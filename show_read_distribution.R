@@ -42,7 +42,7 @@ no_dup <- as.vector(countLines(list.files(opt$datadir, pattern = '*.nodup.fasta'
                                 recursive = T, full.names = T))/2)
 if(!is.null(opt$rawdir)) {
   # count sequences of raw data if sepcified
-  raw = unique(countLines(list.files(opt$rgit awdir, pattern = '*.fastq', 
+  raw = unique(countLines(list.files(opt$rawdir, pattern = '*.fastq', 
                               recursive = T, full.names = T))/4)
   data <- data.frame(raw, filtered_fastq, single_filtered,concat, no_dup)
 } else {
