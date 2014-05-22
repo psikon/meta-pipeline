@@ -20,7 +20,6 @@ opt <- parse_args(OptionParser(usage = "usage: %prog [options]",
                                option_list = option_list,
                                add_help_option = TRUE,
                                ))
-
 # load needed libraries
 suppressPackageStartupMessages(library('reshape2'))
 suppressPackageStartupMessages(library('ggplot2'))
@@ -43,12 +42,13 @@ no_dup <- countLines(list.files(opt$datadir, pattern = '*.nodup.fasta',
                                 recursive = T, full.names = T))/2
 if(!is.null(opt$rawdir)) {
   # count sequences of raw data if sepcified
-  raw = countLines(list.files(opt$datadir, pattern = '*.fastq', 
+  raw = countLines(list.files(opt$rawdir, pattern = '*.fastq', 
                               recursive = T, full.names = T))/4
   data <- data.frame(raw, filtered_fastq, single_filtered,concat, no_dup)
 } else {
   data <- data.frame(filtered_fastq,single_filtered,concat,no_dup)
 }
+
 # generate vector of rownames
 samples <- unlist(strsplit(opt$samplenames,","))
 if (length(samples)!= nrow(data)){
