@@ -35,15 +35,15 @@ single_filtered <-  countLines(filtered_fastq[grep("*.single.filtered.fastq", fi
 # count sequences of filtered paired end data
 filtered_fastq <- unique(countLines(filtered_fastq[-grep("*.single.filtered.fastq", filtered_fastq)]))/4
 # count sequences of successful concatinated data
-concat <- countLines(list.files(opt$datadir, pattern = '*.extendedFrags.fastq', 
-                                recursive = T, full.names = T))/4
+concat <- as.vector(countLines(list.files(opt$datadir, pattern = '*.extendedFrags.fastq', 
+                                recursive = T, full.names = T))/4)
 # count sequences of non duplicated data
-no_dup <- countLines(list.files(opt$datadir, pattern = '*.nodup.fasta', 
-                                recursive = T, full.names = T))/2
+no_dup <- as.vector(countLines(list.files(opt$datadir, pattern = '*.nodup.fasta', 
+                                recursive = T, full.names = T))/2)
 if(!is.null(opt$rawdir)) {
   # count sequences of raw data if sepcified
-  raw = countLines(list.files(opt$rawdir, pattern = '*.fastq', 
-                              recursive = T, full.names = T))/4
+  raw = unique(countLines(list.files(opt$rgit awdir, pattern = '*.fastq', 
+                              recursive = T, full.names = T))/4)
   data <- data.frame(raw, filtered_fastq, single_filtered,concat, no_dup)
 } else {
   data <- data.frame(filtered_fastq,single_filtered,concat,no_dup)
