@@ -13,6 +13,8 @@ option_list <- list(
               default = 0.90, help = "bitscore_tolerance"),
   make_option("--coverage_threshold", dest = "coverage", type = "numeric",
               default = 0.30, help = "coverage_threshold"))
+  make_option("--lib", dest = "lib", default = NULL, type = "character",
+              help = "specify R libary position")
 
 # init the commandline interface
 opt <- parse_args(OptionParser(usage = "usage: %prog [options]",
@@ -21,12 +23,12 @@ opt <- parse_args(OptionParser(usage = "usage: %prog [options]",
                                ))
 # load needed libraries
 message("Loading libary: blastr")
-suppressPackageStartupMessages(library('blastr'))
+suppressPackageStartupMessages(library('blastr', lib.loc = opt$lib))
 message("Loading libary: ncbi")
-suppressPackageStartupMessages(library('ncbi'))
+suppressPackageStartupMessages(library('ncbi', lib.loc = opt$lib))
 message("Loading libary: metaR")
-suppressPackageStartupMessages(library('metaR'))
-suppressPackageStartupMessages(library('rmisc'))
+suppressPackageStartupMessages(library('metaR', lib.loc = opt$lib))
+suppressPackageStartupMessages(library('rmisc', lib.loc = opt$lib))
 
 message("Generate Taxonomy Database ...")
 generate.TaxonomyReport(blast_db_path = opt$input,
