@@ -1,4 +1,4 @@
-!/usr/bin/env Rscript
+#!/usr/bin/env Rscript
 
 # load command line interface
 suppressPackageStartupMessages(library('optparse'))
@@ -20,7 +20,19 @@ opt <- parse_args(OptionParser(usage = "usage: %prog [options]",
                                add_help_option = TRUE,
                                ))
 # load needed libraries
+message("Loading libary: blastr")
 suppressPackageStartupMessages(library('blastr'))
+message("Loading libary: ncbi")
 suppressPackageStartupMessages(library('ncbi'))
+message("Loading libary: metaR")
 suppressPackageStartupMessages(library('metaR'))
 suppressPackageStartupMessages(library('rmisc'))
+
+message("Generate Taxonomy Database ...")
+generate.TaxonomyReport(blast_db_path = opt$input,
+                        metadata = list(SampleId=1),
+                        coverage_threshold = opt$coverage,
+                        min_match = 50,
+                        taxon_db_path = opt$output,
+                        bitscore_tolerance = opt$bitscore)
+message("Finished")
